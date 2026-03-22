@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SearchWithSeed } from '../skill_tree';
-  import { skillTree, translateStat, openTrade } from '../skill_tree';
+  import { skillTree, translatePassiveNodeName, translateStat, openTrade } from '../skill_tree';
 
   export let highlight: (newSeed: number, passives: number[]) => void;
   export let set: SearchWithSeed;
@@ -8,6 +8,12 @@
   export let conqueror: string;
   export let platform: string;
   export let league: string;
+
+  const ui = {
+    trade: '\u4ea4\u6613',
+    seed: '\u79cd\u5b50',
+    weight: '\u6743\u91cd'
+  } as const;
 </script>
 
 <div
@@ -19,16 +25,17 @@
     )}>
   <div class="flex flex-row justify-between">
     <!-- Padding -->
-    <button class="px-3 invisible">Trade</button>
+    <button class="px-3 invisible">{ui.trade}</button>
     <div class="font-bold text-orange-500 text-center">
-      Seed {set.seed} (weight {set.weight})
+      {ui.seed} {set.seed} ({ui.weight} {set.weight})
     </div>
-    <button class="px-3 bg-blue-500/40 rounded" on:click={() => openTrade(jewel, conqueror, [set], platform, league)}>Trade</button>
+    <button class="px-3 bg-blue-500/40 rounded" on:click={() => openTrade(jewel, conqueror, [set], platform, league)}
+      >{ui.trade}</button>
   </div>
   {#each set.skills as skill}
     <div class="mt-2">
       <span>
-        {skillTree.nodes[skill.passive].name} ({skill.passive})
+        {translatePassiveNodeName(skill.passive, skillTree.nodes[skill.passive].name)} ({skill.passive})
       </span>
       <ul class="list-disc pl-6 font-bold">
         {#each Object.keys(skill.stats) as stat}

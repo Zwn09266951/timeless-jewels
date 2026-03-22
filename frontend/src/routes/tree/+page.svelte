@@ -4,7 +4,12 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import type { Node } from '../../lib/skill_tree_types';
-  import { getAffectedNodes, skillTree, translateStat, openTrade } from '../../lib/skill_tree';
+  import {
+    getAffectedNodes,
+    skillTree,
+    translateStat,
+    openTrade
+  } from '../../lib/skill_tree';
   import { syncWrap } from '../../lib/worker';
   import { proxy } from 'comlink';
   import type { ReverseSearchConfig, StatConfig } from '../../lib/skill_tree';
@@ -12,12 +17,49 @@
   import { statValues } from '../../lib/values';
   import { data, calculator } from '../../lib/types';
   import { onMount } from 'svelte';
+  import { selectPlaceholder, translateConqueror, translateTimelessJewel } from '../../lib/locale';
+
+  const ui = {
+    results: '\u7ed3\u679c',
+    timelessJewel: '\u6c38\u6052\u73e0\u5b9d',
+    trade: '\u4ea4\u6613',
+    grouped: '\u5206\u7ec4',
+    config: '\u914d\u7f6e',
+    conqueror: '\u5f81\u670d\u8005',
+    enterSeed: '\u8f93\u5165\u79cd\u5b50',
+    selectStats: '\u9009\u62e9\u8bcd\u7f00',
+    seed: '\u79cd\u5b50',
+    seedRangePrefix: '\u79cd\u5b50\u8303\u56f4\u5fc5\u987b\u5728',
+    seedRangeLink: '\u5230',
+    sortOrder: '\u6392\u5e8f\u65b9\u5f0f',
+    colors: '\u9ad8\u4eae',
+    split: '\u5206\u680f',
+    notables: '\u6838\u5fc3\u5929\u8d4b',
+    passives: '\u5c0f\u5929\u8d4b',
+    addStat: '\u6dfb\u52a0\u8bcd\u7f00',
+    min: '\u6700\u4f4e',
+    weight: '\u6743\u91cd',
+    minTotalWeight: '\u6700\u4f4e\u603b\u6743\u91cd',
+    selectAll: '\u5168\u9009',
+    deselect: '\u53d6\u6d88\u9009\u62e9',
+    search: '\u641c\u7d22',
+    selectSocket: '\u8bf7\u5148\u70b9\u51fb\u4e00\u4e2a\u73e0\u5b9d\u63d2\u69fd',
+    source: '\u6e90\u7801\uff08\u0047\u0069\u0074\u0048\u0075\u0062\uff09',
+    count: '\u6570\u91cf',
+    alphabetical: '\u5b57\u6bcd\u5e8f',
+    rarity: '\u7a00\u6709\u5ea6',
+    value: '\u4ef7\u503c',
+    selectPlaceholder,
+    pc: '\u7535\u8111',
+    playstation: 'PlayStation'
+  } as const;
 
   const searchParams = $page.url.searchParams;
 
   const jewels = Object.keys(data.TimelessJewels).map((k) => ({
     value: parseInt(k),
-    label: data.TimelessJewels[k]
+    label: translateTimelessJewel(data.TimelessJewels[k]),
+    rawLabel: data.TimelessJewels[k]
   }));
 
   let selectedJewel = searchParams.has('jewel') ? jewels.find((j) => j.value == searchParams.get('jewel')) : undefined;
@@ -25,14 +67,17 @@
   $: conquerors = selectedJewel
     ? Object.keys(data.TimelessJewelConquerors[selectedJewel.value]).map((k) => ({
         value: k,
-        label: k
+        label: translateConqueror(k),
+        rawLabel: k
       }))
     : [];
 
+  const conquerorValue = searchParams.get('conqueror') || '';
   let selectedConqueror = searchParams.has('conqueror')
     ? {
-        value: searchParams.get('conqueror'),
-        label: searchParams.get('conqueror')
+        value: conquerorValue,
+        label: translateConqueror(conquerorValue),
+        rawLabel: conquerorValue
       }
     : undefined;
 
@@ -360,19 +405,19 @@
 
   const sortResults = [
     {
-      label: 'Count',
+      label: ui.count,
       value: 'count'
     },
     {
-      label: 'Alphabetical',
+      label: ui.alphabetical,
       value: 'alphabet'
     },
     {
-      label: 'Rarity',
+      label: ui.rarity,
       value: 'rarity'
     },
     {
-      label: 'Value',
+      label: ui.value,
       value: 'value'
     }
   ] as const;
@@ -399,14 +444,15 @@
     }
 
     const jewel = jewels.find((j) => j.label === lines[2]);
-    if (!jewel) {
+    const matchedJewel = jewel || jewels.find((j) => j.rawLabel === lines[2]);
+    if (!matchedJewel) {
       return;
     }
 
     let newSeed: number | undefined;
     let conqueror: string | undefined;
     for (let i = 10; i < lines.length; i++) {
-      conqueror = Object.keys(data.TimelessJewelConquerors[jewel.value]).find((k) => lines[i].indexOf(k) >= 0);
+      conqueror = Object.keys(data.TimelessJewelConquerors[matchedJewel.value]).find((k) => lines[i].indexOf(k) >= 0);
       if (conqueror) {
         const matches = /(\d+)/.exec(lines[i]);
         if (matches.length === 0) {
@@ -425,8 +471,8 @@
     results = false;
     mode = 'seed';
     seed = newSeed;
-    selectedJewel = jewel;
-    selectedConqueror = { label: conqueror, value: conqueror };
+    selectedJewel = matchedJewel;
+    selectedConqueror = { label: translateConqueror(conqueror), value: conqueror, rawLabel: conqueror };
     updateUrl();
   };
 
@@ -435,13 +481,13 @@
   const platforms = [
   {
     value: 'PC',
-    label: 'PC'
+    label: ui.pc
   }, {
     value: 'Xbox',
     label: 'Xbox'
   }, {
     value: 'Playstation',
-    label: 'Playstation'
+    label: ui.playstation
   }
   ];
 
@@ -489,9 +535,9 @@
 
             <h3 class="flex-grow">
               {#if results}
-                <span>Results</span>
+                <span>{ui.results}</span>
               {:else}
-                <span>Timeless Jewel</span>
+                <span>{ui.timelessJewel}</span>
               {/if}
             </h3>
           </div>
@@ -504,45 +550,49 @@
                   class="p-1 px-3 bg-blue-500/40 rounded disabled:bg-blue-900/40"
                   on:click={() => openTrade(searchJewel, searchConqueror, searchResults.raw, platform.value, league.value)}
                   disabled={!searchResults}>
-                  Trade
+                  {ui.trade}
                 </button>
                 <button
                   class="p-1 px-3 bg-blue-500/40 rounded disabled:bg-blue-900/40"
                   class:grouped={groupResults}
                   on:click={() => (groupResults = !groupResults)}
                   disabled={!searchResults}>
-                  Grouped
+                  {ui.grouped}
                 </button>
               {/if}
               <button class="bg-neutral-100/20 px-4 p-1 rounded" on:click={() => (results = !results)}>
-                {results ? 'Config' : 'Results'}
+                {results ? ui.config : ui.results}
               </button>
             </div>
           {/if}
         </div>
 
         {#if !results}
-          <Select items={jewels} bind:value={selectedJewel} on:change={changeJewel} />
+          <Select items={jewels} bind:value={selectedJewel} on:change={changeJewel} placeholder={ui.selectPlaceholder} />
 
           {#if selectedJewel}
             <div class="mt-4">
-              <h3 class="mb-2">Conqueror</h3>
-              <Select items={conquerors} bind:value={selectedConqueror} on:change={updateUrl} />
+              <h3 class="mb-2">{ui.conqueror}</h3>
+              <Select
+                items={conquerors}
+                bind:value={selectedConqueror}
+                on:change={updateUrl}
+                placeholder={ui.selectPlaceholder} />
             </div>
 
             {#if selectedConqueror && Object.keys(data.TimelessJewelConquerors[selectedJewel.value]).indexOf(selectedConqueror.value) >= 0}
               <div class="mt-4 w-full flex flex-row">
                 <button class="selection-button" class:selected={mode === 'seed'} on:click={() => setMode('seed')}>
-                  Enter Seed
+                  {ui.enterSeed}
                 </button>
                 <button class="selection-button" class:selected={mode === 'stats'} on:click={() => setMode('stats')}>
-                  Select Stats
+                  {ui.selectStats}
                 </button>
               </div>
 
               {#if mode === 'seed'}
                 <div class="mt-4">
-                  <h3 class="mb-2">Seed</h3>
+                  <h3 class="mb-2">{ui.seed}</h3>
                   <input
                     type="number"
                     bind:value={seed}
@@ -551,8 +601,8 @@
                     max={data.TimelessJewelSeedRanges[selectedJewel.value].Max} />
                   {#if seed < data.TimelessJewelSeedRanges[selectedJewel.value].Min || seed > data.TimelessJewelSeedRanges[selectedJewel.value].Max}
                     <div class="mt-2">
-                      Seed must be between {data.TimelessJewelSeedRanges[selectedJewel.value].Min}
-                      and {data.TimelessJewelSeedRanges[selectedJewel.value].Max}
+                      {ui.seedRangePrefix} {data.TimelessJewelSeedRanges[selectedJewel.value].Min}
+                      {ui.seedRangeLink} {data.TimelessJewelSeedRanges[selectedJewel.value].Max}
                     </div>
                   {/if}
                 </div>
@@ -560,15 +610,15 @@
                 {#if seed >= data.TimelessJewelSeedRanges[selectedJewel.value].Min && seed <= data.TimelessJewelSeedRanges[selectedJewel.value].Max}
                   <div class="flex flex-row mt-4 items-end">
                     <div class="flex-grow">
-                      <h3 class="mb-2">Sort Order</h3>
-                      <Select items={sortResults} bind:value={sortOrder} />
+                      <h3 class="mb-2">{ui.sortOrder}</h3>
+                      <Select items={sortResults} bind:value={sortOrder} placeholder={ui.selectPlaceholder} />
                     </div>
                     <div class="ml-2">
                       <button
                         class="bg-neutral-500/20 p-2 px-4 rounded"
                         class:selected={colored}
                         on:click={() => (colored = !colored)}>
-                        Colors
+                        {ui.colors}
                       </button>
                     </div>
                     <div class="ml-2">
@@ -576,7 +626,7 @@
                         class="bg-neutral-500/20 p-2 px-4 rounded"
                         class:selected={split}
                         on:click={() => (split = !split)}>
-                        Split
+                        {ui.split}
                       </button>
                     </div>
                   </div>
@@ -593,7 +643,7 @@
                     </ul>
                   {:else}
                     <div class="overflow-auto mt-4">
-                      <h3>Notables</h3>
+                      <h3>{ui.notables}</h3>
                       <ul class="mt-1" class:rainbow={colored}>
                         {#each sortCombined(combineResults(seedResults, colored, 'notables'), sortOrder.value) as r}
                           <li class="cursor-pointer" on:click={() => highlight(seed, r.passives)}>
@@ -604,7 +654,7 @@
                         {/each}
                       </ul>
 
-                      <h3 class="mt-2">Smalls</h3>
+                      <h3 class="mt-2">{ui.passives}</h3>
                       <ul class="mt-1" class:rainbow={colored}>
                         {#each sortCombined(combineResults(seedResults, colored, 'passives'), sortOrder.value) as r}
                           <li class="cursor-pointer" on:click={() => highlight(seed, r.passives)}>
@@ -619,8 +669,12 @@
                 {/if}
               {:else if mode === 'stats'}
                 <div class="mt-4">
-                  <h3 class="mb-2">Add Stat</h3>
-                  <Select items={statItems} on:change={selectStat} bind:this={statSelector} />
+                  <h3 class="mb-2">{ui.addStat}</h3>
+                  <Select
+                    items={statItems}
+                    on:change={selectStat}
+                    bind:this={statSelector}
+                    placeholder={ui.selectPlaceholder} />
                 </div>
                 {#if Object.keys(selectedStats).length > 0}
                   <div class="mt-4 flex flex-col overflow-auto min-h-[100px]">
@@ -636,11 +690,11 @@
                         </div>
                         <div class="mt-2 flex flex-row">
                           <div class="mr-4 flex flex-row items-center">
-                            <div class="mr-2">Min:</div>
+                            <div class="mr-2">{ui.min}:</div>
                             <input type="number" min="0" bind:value={selectedStats[s].min} />
                           </div>
                           <div class="flex flex-row items-center">
-                            <div class="mr-2">Weight:</div>
+                            <div class="mr-2">{ui.weight}:</div>
                             <input type="number" min="0" bind:value={selectedStats[s].weight} />
                           </div>
                         </div>
@@ -649,7 +703,7 @@
                   </div>
                   <div class="flex flex-col mt-2">
                     <div class="flex flex-row items-center">
-                      <div class="mr-2 min-w-fit">Min Total Weight:</div>
+                      <div class="mr-2 min-w-fit">{ui.minTotalWeight}:</div>
                       <input type="number" min="0" bind:value={minTotalWeight} />
                     </div>
                   </div>
@@ -659,25 +713,25 @@
                         class="p-2 px-2 bg-yellow-500/40 rounded disabled:bg-yellow-900/40 mr-2"
                         on:click={selectAll}
                         disabled={searching || disabled.size == 0}>
-                        Select All
+                        {ui.selectAll}
                       </button>
                       <button
                         class="p-2 px-2 bg-yellow-500/40 rounded disabled:bg-yellow-900/40 mr-2"
                         on:click={selectAllNotables}
                         disabled={searching || disabled.size == 0}>
-                        Notables
+                        {ui.notables}
                       </button>
                       <button
                         class="p-2 px-2 bg-yellow-500/40 rounded disabled:bg-yellow-900/40 mr-2"
                         on:click={selectAllPassives}
                         disabled={searching || disabled.size == 0}>
-                        Passives
+                        {ui.passives}
                       </button>
                       <button
                         class="p-2 px-2 bg-yellow-500/40 rounded disabled:bg-yellow-900/40 flex-grow"
                         on:click={deselectAll}
                         disabled={searching || disabled.size >= affectedNodes.length}>
-                        Deselect
+                        {ui.deselect}
                       </button>
                     </div>
                     <div class="flex flex-row mt-2">
@@ -688,7 +742,7 @@
                         {#if searching}
                           {currentSeed} / {data.TimelessJewelSeedRanges[selectedJewel.value].Max}
                         {:else}
-                          Search
+                          {ui.search}
                         {/if}
                       </button>
                     </div>
@@ -697,7 +751,7 @@
               {/if}
 
               {#if !circledNode}
-                <h2 class="mt-4">Click on a jewel socket</h2>
+                <h2 class="mt-4">{ui.selectSocket}</h2>
               {/if}
             {/if}
           {/if}
@@ -719,7 +773,7 @@
   {/if}
 
   <div class="text-orange-500 absolute bottom-0 right-0 m-2">
-    <a href="https://github.com/Vilsol/timeless-jewels" target="_blank" rel="noopener">Source (Github)</a>
+    <a href="https://github.com/Vilsol/timeless-jewels" target="_blank" rel="noopener">{ui.source}</a>
   </div>
 </SkillTree>
 

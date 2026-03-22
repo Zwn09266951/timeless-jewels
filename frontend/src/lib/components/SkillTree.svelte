@@ -13,6 +13,9 @@
     inverseTranslations,
     orbitAngleAt,
     skillTree,
+    translateAlternatePassiveName,
+    translatePassiveNodeName,
+    translatePassiveNodeStats,
     toCanvasCoords
   } from '../skill_tree';
   import type { Point } from '../skill_tree';
@@ -328,8 +331,11 @@
     }
 
     if (hoveredNode) {
-      let nodeName = hoveredNode.name;
-      let nodeStats: { text: string; special: boolean }[] = (hoveredNode.stats || []).map((s) => ({
+      let nodeName = translatePassiveNodeName(hoveredNode.skill, hoveredNode.name);
+      let nodeStats: { text: string; special: boolean }[] = translatePassiveNodeStats(
+        hoveredNode.skill,
+        hoveredNode.stats || []
+      ).map((s) => ({
         text: s,
         special: false
       }));
@@ -346,7 +352,10 @@
           if (result) {
             if ('AlternatePassiveSkill' in result && result.AlternatePassiveSkill) {
               nodeStats = [];
-              nodeName = result.AlternatePassiveSkill.Name;
+              nodeName = translateAlternatePassiveName(
+                result.AlternatePassiveSkill.StatsKeys,
+                result.AlternatePassiveSkill.Name
+              );
 
               if ('StatsKeys' in result.AlternatePassiveSkill) {
                 result.AlternatePassiveSkill.StatsKeys.forEach((statId, i) => {
@@ -423,7 +432,7 @@
         });
       } else if (hoveredNode.isJewelSocket) {
         allLines.push({
-          text: 'Click to select this socket',
+          text: '\u70b9\u51fb\u9009\u62e9\u8be5\u73e0\u5b9d\u63d2\u69fd',
           offset,
           special: true
         });

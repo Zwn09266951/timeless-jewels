@@ -13,7 +13,129 @@ export const inverseTranslations: Record<string, Translation> = {};
 
 export const passiveToTree: Record<number, number> = {};
 
-export const loadSkillTree = () => {
+const getDefaultTranslationFiles = () => [
+  data.StatTranslationsJSON,
+  data.PassiveSkillStatTranslationsJSON,
+  data.PassiveSkillAuraStatTranslationsJSON
+];
+
+const chineseTranslationVersions = ['3.26', '3.25'];
+
+const translationFileNames = [
+  'stat_descriptions.json.gz',
+  'passive_skill_stat_descriptions.json.gz',
+  'passive_skill_aura_stat_descriptions.json.gz'
+];
+
+const bundledTranslationFileNames = [
+  'stat_descriptions.cn.json.gz',
+  'passive_skill_stat_descriptions.cn.json.gz',
+  'passive_skill_aura_stat_descriptions.cn.json.gz'
+];
+
+let translationLoadPromise: Promise<void> | undefined;
+
+const clearInverseTranslations = () => {
+  Object.keys(inverseTranslations).forEach((key) => delete inverseTranslations[key]);
+};
+
+const loadTranslations = (translationFiles: string[]) => {
+  clearInverseTranslations();
+
+  translationFiles.forEach((f) => {
+    const translations: TranslationFile = JSON.parse(f);
+
+    translations.descriptors.forEach((t) => {
+      t.ids.forEach((id) => {
+        if (!(id in inverseTranslations)) {
+          inverseTranslations[id] = t;
+        }
+      });
+    });
+  });
+};
+
+type DecompressionStreamCtor = new (format: string) => TransformStream<Uint8Array, Uint8Array>;
+
+const unzipGzip = async (compressed: ArrayBuffer): Promise<string | null> => {
+  const ctor = (globalThis as unknown as { DecompressionStream?: DecompressionStreamCtor }).DecompressionStream;
+  if (!ctor) {
+    return null;
+  }
+
+  const stream = new Blob([compressed]).stream().pipeThrough(new ctor('gzip'));
+  return new Response(stream).text();
+};
+
+const fetchTranslationFile = async (url: string): Promise<string | null> => {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), 8000);
+
+  try {
+    const response = await fetch(url, { signal: abortController.signal });
+    if (!response.ok) {
+      return null;
+    }
+
+    const compressed = await response.arrayBuffer();
+    return await unzipGzip(compressed);
+  } catch (error) {
+    console.warn('Failed to fetch chinese translation file', error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const fetchBundledChineseTranslations = async (assetBase: string): Promise<string[] | null> => {
+  if (!assetBase) {
+    return null;
+  }
+
+  const urls = bundledTranslationFileNames.map((fileName) => `${assetBase}/translations/${fileName}`);
+  const files = await Promise.all(urls.map((url) => fetchTranslationFile(url)));
+  if (files.every((file) => !!file)) {
+    return files as string[];
+  }
+
+  return null;
+};
+
+const fetchChineseTranslations = async (): Promise<string[] | null> => {
+  for (const version of chineseTranslationVersions) {
+    const urls = translationFileNames.map(
+      (fileName) => `https://go-pob-data.pages.dev/data/${version}/stat_translations/cn/${fileName}`
+    );
+    const files = await Promise.all(urls.map((url) => fetchTranslationFile(url)));
+
+    if (files.every((file) => !!file)) {
+      return files as string[];
+    }
+  }
+
+  return null;
+};
+
+const loadTranslationMap = async (assetBase = '', enableRemoteFallback = false) => {
+  loadTranslations(getDefaultTranslationFiles());
+
+  const bundledChineseTranslations = await fetchBundledChineseTranslations(assetBase);
+  if (bundledChineseTranslations) {
+    loadTranslations(bundledChineseTranslations);
+    return;
+  }
+
+  if (!enableRemoteFallback) {
+    return;
+  }
+
+  const chineseTranslations = await fetchChineseTranslations();
+  if (chineseTranslations) {
+    loadTranslations(chineseTranslations);
+  }
+};
+
+export const loadSkillTree = async (assetBase = '', enableRemoteFallback = false) => {
   skillTree = JSON.parse(data.SkillTree);
   console.log('Loaded skill tree', skillTree);
 
@@ -87,23 +209,10 @@ export const loadSkillTree = () => {
     (c) => (inverseSprites[c] = skillTree.sprites.frame['0.3835'])
   );
 
-  const translationFiles = [
-    data.StatTranslationsJSON,
-    data.PassiveSkillStatTranslationsJSON,
-    data.PassiveSkillAuraStatTranslationsJSON
-  ];
-
-  translationFiles.forEach((f) => {
-    const translations: TranslationFile = JSON.parse(f);
-
-    translations.descriptors.forEach((t) => {
-      t.ids.forEach((id) => {
-        if (!(id in inverseTranslations)) {
-          inverseTranslations[id] = t;
-        }
-      });
-    });
-  });
+  if (!translationLoadPromise) {
+    translationLoadPromise = loadTranslationMap(assetBase, enableRemoteFallback);
+  }
+  await translationLoadPromise;
 
   Object.keys(data.TreeToPassive).forEach((k) => {
     passiveToTree[data.TreeToPassive[parseInt(k)].Index] = parseInt(k);
@@ -336,11 +445,30 @@ export interface SearchResults {
   raw: SearchWithSeed[];
 }
 
+const containsChinese = (text: string): boolean => /[\u3400-\u9fff]/.test(text);
+
+const extractStatRoll = (text: string): number | undefined => {
+  const match = /[-+]?\d+(?:\.\d+)?/.exec(text);
+  if (!match) {
+    return undefined;
+  }
+
+  return parseFloat(match[0]);
+};
+
+const stripTranslationPlaceholders = (text: string): string =>
+  text
+    .replace(/\{\d(?::(.*?)d(.*?))\}/g, ' ')
+    .replace(/\{\d\}/g, ' ')
+    .replace(/[#%+.,/-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 export const translateStat = (id: number, roll?: number | undefined): string => {
   const stat = getStat(id);
   const translation = inverseTranslations[stat.ID];
-  if (roll) {
-    return formatStats(translation, roll) || stat.ID;
+  if (roll !== undefined) {
+    return (translation ? formatStats(translation, roll) : undefined) || stat.ID;
   }
 
   let translationText = stat.Text || stat.ID;
@@ -349,6 +477,51 @@ export const translateStat = (id: number, roll?: number | undefined): string => 
     translationText = translationText.replace(/\{\d(?::(.*?)d(.*?))\}/, '$1#$2').replace(/\{\d\}/, '#');
   }
   return translationText;
+};
+
+export const translatePassiveNodeName = (skillId?: number, fallback = ''): string => {
+  if (!skillId) {
+    return fallback;
+  }
+
+  const passive = data.TreeToPassive[skillId];
+  if (!passive?.StatIndices?.length) {
+    return fallback;
+  }
+
+  const translated = stripTranslationPlaceholders(translateStat(passive.StatIndices[0]));
+  return translated.length > 0 && containsChinese(translated) ? translated : fallback;
+};
+
+export const translatePassiveNodeStats = (skillId?: number, rawStats: string[] = []): string[] => {
+  if (!skillId) {
+    return rawStats;
+  }
+
+  const passive = data.TreeToPassive[skillId];
+  if (!passive?.StatIndices?.length) {
+    return rawStats;
+  }
+
+  return rawStats.map((rawText, index) => {
+    const statId = passive.StatIndices[index];
+    if (!statId) {
+      return rawText;
+    }
+
+    const roll = extractStatRoll(rawText);
+    const translated = roll === undefined ? translateStat(statId) : translateStat(statId, roll);
+    return containsChinese(translated) ? translated : rawText;
+  });
+};
+
+export const translateAlternatePassiveName = (statIds: number[] | undefined, fallback = ''): string => {
+  if (!statIds?.length) {
+    return fallback;
+  }
+
+  const translated = stripTranslationPlaceholders(translateStat(statIds[0]));
+  return translated.length > 0 && containsChinese(translated) ? translated : fallback;
 };
 
 const tradeStatNames: { [key: number]: { [key: string]: string } } = {

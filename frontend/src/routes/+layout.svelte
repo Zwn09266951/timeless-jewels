@@ -7,6 +7,11 @@
   import { syncWrap } from '../lib/worker';
   import { initializeCrystalline } from '../lib/types';
 
+  const ui = {
+    title: '\u6c38\u6052\u73e0\u5b9d\u8ba1\u7b97\u5668',
+    loading: '\u52a0\u8f7d\u4e2d...'
+  };
+
   let wasmLoading = true;
 
   // eslint-disable-next-line no-undef
@@ -16,11 +21,11 @@
     fetch(assets + '/calculator.wasm')
       .then((data) => data.arrayBuffer())
       .then((data) => {
-        WebAssembly.instantiate(data, go.importObject).then((result) => {
+        WebAssembly.instantiate(data, go.importObject).then(async (result) => {
           go.run(result.instance);
-          wasmLoading = false;
           initializeCrystalline();
-          loadSkillTree();
+          await loadSkillTree(assets, true);
+          wasmLoading = false;
         });
 
         syncWrap.boot(data);
@@ -33,9 +38,9 @@
     <div class="flex flex-col">
       <div class="py-10 flex flex-col justify-between">
         <div>
-          <h1 class="text-white mb-10 text-center">Timeless Calculator</h1>
+          <h1 class="text-white mb-10 text-center">{ui.title}</h1>
 
-          <h2 class="text-center">Loading...</h2>
+          <h2 class="text-center">{ui.loading}</h2>
         </div>
       </div>
     </div>
